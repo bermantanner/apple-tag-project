@@ -1,6 +1,6 @@
 ################################################################################
 # Automatically-generated file. Do not edit!
-# Toolchain: GNU Tools for STM32 (11.3.rel1)
+# Toolchain: GNU Tools for STM32 (12.3.rel1)
 ################################################################################
 
 -include ../makefile.init
@@ -60,8 +60,8 @@ all: main-build
 main-build: youlostit-ble.elf secondary-outputs
 
 # Tool invocations
-youlostit-ble.elf youlostit-ble.map: $(OBJS) $(USER_OBJS) /Users/schulman/STM32CubeIDE/workspace_1.13.2/youlostit-ble/STM32L475VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "youlostit-ble.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/Users/schulman/STM32CubeIDE/workspace_1.13.2/youlostit-ble/STM32L475VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="youlostit-ble.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+youlostit-ble.elf youlostit-ble.map: $(OBJS) $(USER_OBJS) C:\Users\thanh\OneDrive\Desktop\Project3190\project-3-adding-low-energy-radio-communication-g10-thanner\youlostit-ble\STM32L475VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "youlostit-ble.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\thanh\OneDrive\Desktop\Project3190\project-3-adding-low-energy-radio-communication-g10-thanner\youlostit-ble\STM32L475VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="youlostit-ble.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
