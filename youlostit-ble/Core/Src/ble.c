@@ -228,57 +228,98 @@
 	 }
  }
 
+// void setConnectable(){
+//		uint8_t* rxEvent;
+//		//Start advertising
+//		uint8_t *localname;
+//		int res;
+//		localname=(uint8_t*)malloc(sizeof(deviceName)+5);//carattere di terminazione+listauid+slavetemp
+//		memcpy(localname,deviceName,sizeof(deviceName));
+//		localname[sizeof(deviceName)+1]=0x00;
+//		localname[sizeof(deviceName)+2]=0x00;
+//		localname[sizeof(deviceName)+3]=0x00;
+//		localname[sizeof(deviceName)+4]=0x00;
+//		localname[sizeof(deviceName)]=0x00;
+//
+//
+//		ACI_GAP_SET_DISCOVERABLE[11]=sizeof(deviceName)+1;
+//		ACI_GAP_SET_DISCOVERABLE[3]=sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE)-4;
+//
+//		uint8_t *discoverableCommand;
+//		discoverableCommand=(uint8_t*)malloc(sizeof(ACI_GAP_SET_DISCOVERABLE)+sizeof(deviceName)+5);
+//		memcpy(discoverableCommand,ACI_GAP_SET_DISCOVERABLE,sizeof(ACI_GAP_SET_DISCOVERABLE));
+//		memcpy(discoverableCommand+sizeof(ACI_GAP_SET_DISCOVERABLE),localname,sizeof(deviceName)+5);
+//
+//		//HAL_Delay(100);
+//		sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
+//		rxEvent=(uint8_t*)malloc(7);
+//		while(!dataAvailable){
+//			dataAvailable = 1;
+//		}
+//		res=fetchBleEvent(rxEvent,7);
+//		if(res==BLE_OK){
+//			res=checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7);
+//			if(res==BLE_OK){
+//				stackInitCompleteFlag|=0x80;
+//			}
+//			else if (((*(rxEvent) == 0x04)) && (*(rxEvent + 2) == 0x04)){
+//				setConnectable(0);
+//				printf("Error discovered");
+//				HAL_Delay(100);
+//				sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
+//				res=fetchBleEvent(rxEvent,7);
+//				if (res==BLE_OK && checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7) == BLE_OK){
+//					printf("YAY");
+//				}
+//			}
+//		}
+//
+//		free(rxEvent);
+//		free(discoverableCommand);
+//		free(localname);
+//		HAL_Delay(10);
+// }
+
  void setConnectable(){
-		uint8_t* rxEvent;
-		//Start advertising
-		uint8_t *localname;
-		int res;
-		localname=(uint8_t*)malloc(sizeof(deviceName)+5);//carattere di terminazione+listauid+slavetemp
-		memcpy(localname,deviceName,sizeof(deviceName));
-		localname[sizeof(deviceName)+1]=0x00;
-		localname[sizeof(deviceName)+2]=0x00;
-		localname[sizeof(deviceName)+3]=0x00;
-		localname[sizeof(deviceName)+4]=0x00;
-		localname[sizeof(deviceName)]=0x00;
+ 		uint8_t* rxEvent;
+ 		//Start advertising
+ 		uint8_t *localname;
+ 		int res;
+ 		localname=(uint8_t*)malloc(sizeof(deviceName)+5);//carattere di terminazione+listauid+slavetemp
+ 		memcpy(localname,deviceName,sizeof(deviceName));
+ 		localname[sizeof(deviceName)+1]=0x00;
+ 		localname[sizeof(deviceName)+2]=0x00;
+ 		localname[sizeof(deviceName)+3]=0x00;
+ 		localname[sizeof(deviceName)+4]=0x00;
+ 		localname[sizeof(deviceName)]=0x00;
 
 
-		ACI_GAP_SET_DISCOVERABLE[11]=sizeof(deviceName)+1;
-		ACI_GAP_SET_DISCOVERABLE[3]=sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE)-4;
+ 		ACI_GAP_SET_DISCOVERABLE[11]=sizeof(deviceName)+1;
+ 		ACI_GAP_SET_DISCOVERABLE[3]=sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE)-4;
 
-		uint8_t *discoverableCommand;
-		discoverableCommand=(uint8_t*)malloc(sizeof(ACI_GAP_SET_DISCOVERABLE)+sizeof(deviceName)+5);
-		memcpy(discoverableCommand,ACI_GAP_SET_DISCOVERABLE,sizeof(ACI_GAP_SET_DISCOVERABLE));
-		memcpy(discoverableCommand+sizeof(ACI_GAP_SET_DISCOVERABLE),localname,sizeof(deviceName)+5);
+ 		uint8_t *discoverableCommand;
+ 		discoverableCommand=(uint8_t*)malloc(sizeof(ACI_GAP_SET_DISCOVERABLE)+sizeof(deviceName)+5);
+ 		memcpy(discoverableCommand,ACI_GAP_SET_DISCOVERABLE,sizeof(ACI_GAP_SET_DISCOVERABLE));
+ 		memcpy(discoverableCommand+sizeof(ACI_GAP_SET_DISCOVERABLE),localname,sizeof(deviceName)+5);
 
-		//HAL_Delay(100);
-		sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
-		rxEvent=(uint8_t*)malloc(7);
-		while(!dataAvailable){
-			dataAvailable = 1;
-		}
-		res=fetchBleEvent(rxEvent,7);
-		if(res==BLE_OK){
-			res=checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7);
-			if(res==BLE_OK){
-				stackInitCompleteFlag|=0x80;
-			}
-			else if (((*(rxEvent) == 0x04)) && (*(rxEvent + 2) == 0x04)){
-				setConnectable(0);
-				printf("Error discovered");
-				HAL_Delay(100);
-				sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
-				res=fetchBleEvent(rxEvent,7);
-				if (res==BLE_OK && checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7) == BLE_OK){
-					printf("YAY");
-				}
-			}
-		}
+ 		// remove existing buffer content
+ 		rxEvent=(uint8_t*)malloc(7);
+ 		res=fetchBleEvent(rxEvent,7);
 
-		free(rxEvent);
-		free(discoverableCommand);
-		free(localname);
-		HAL_Delay(10);
- }
+ 		// send the command to make the peripheral discoverable
+ 		sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
+ 		HAL_Delay(100);
+ 		res=fetchBleEvent(rxEvent,7);
+ 		if(res==BLE_OK){
+ 		   if(checkEventResp(rxEvent, ACI_GAP_SET_DISCOVERABLE_COMPLETE, 7)==BLE_OK){
+ 			  stackInitCompleteFlag|=0x80;
+ 		   }
+ 		}
+ 		free(rxEvent);
+ 		free(discoverableCommand);
+ 		free(localname);
+ 		HAL_Delay(10);
+  }
 
  /**
   * @brief Sends a BLE command and processes the response event.

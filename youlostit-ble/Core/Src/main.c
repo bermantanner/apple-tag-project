@@ -51,7 +51,7 @@ static void MX_SPI3_Init(void);
 void privtag_run();
 
 #define MOVEMENT_THRESHOLD 4000     	// Max movement until movement triggered
-#define LOST_TIME_THRESHOLD 10000  		// 60 seconds in milliseconds
+#define LOST_TIME_THRESHOLD 60000  		// 60 seconds in milliseconds
 #define PREAMBLE 0b01100110       		// 8-bit preamble
 #define USER_ID  0b0001101011011100 	// 16-bit ID (6876)
 #define TOTAL_BITS 32					// 8 bit preamble + 16 bit userID + 8 bit time since lost
