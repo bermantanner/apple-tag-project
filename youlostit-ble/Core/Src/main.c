@@ -51,7 +51,7 @@ static void MX_SPI3_Init(void);
 void privtag_run();
 
 #define MOVEMENT_THRESHOLD 4000     	// Max movement until movement triggered
-#define LOST_TIME_THRESHOLD 60000  		// 60 seconds in milliseconds
+#define LOST_TIME_THRESHOLD 10000  		// 60 seconds in milliseconds
 #define PREAMBLE 0b01100110       		// 8-bit preamble
 #define USER_ID  0b0001101011011100 	// 16-bit ID (6876)
 #define TOTAL_BITS 32					// 8 bit preamble + 16 bit userID + 8 bit time since lost
@@ -182,6 +182,10 @@ void privtag_run() {
 
 	while (1) {
 
+		if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+				catchBLE();
+		}
+
 		if (timer_flag) { 			       // Every time there is a timer tick (currently set at 100ns intervals (1/10 s))...
 			timer_flag = 0; 			   // Reset the timer flag
 			lsm6dsl_read_xyz(&x, &y, &z);  // Read acceleration data
@@ -217,8 +221,16 @@ void privtag_run() {
 				        setDiscoverability(0);  // Disable BLE advertising
 				        nonDiscoverable = 1;
 				}
-				setDiscoverability(0);  // Disable BLE advertising
-				nonDiscoverable = 1;
+
+//				if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+//						catchBLE();
+//						disconnectBLE();
+//						setDiscoverability(0);  // Disable BLE advertising
+//						nonDiscoverable = 1;
+//				}
+//
+//				setDiscoverability(0);  // Disable BLE advertising
+//				nonDiscoverable = 1;
 			}
 			else {
 			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) {
