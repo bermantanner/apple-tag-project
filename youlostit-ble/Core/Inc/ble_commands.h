@@ -80,4 +80,5 @@
  uint8_t ACI_GAP_SET_NON_DISCOVERABLE[] = { 0x01, 0x81, 0xfc, 0x00}; // TODO - fill this in
  uint8_t ACI_GAP_SET_NON_DISCOVERABLE_COMPLETE[] = {0x04, 0x0e, 0x04, 0x01, 0x81, 0xfc, 0x00}; // TODO - fill this in
 
+
  #endif /* INC_BLE_COMMANDS_H_ */

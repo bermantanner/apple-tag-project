@@ -5,9 +5,9 @@
 ../Core/Src/ble.c:185:7:sendCommand	48	static
 ../Core/Src/ble.c:211:7:catchBLE	24	static
 ../Core/Src/ble.c:231:7:setConnectable	32	static
-../Core/Src/ble.c:285:6:BLE_command	32	static
-../Core/Src/ble.c:310:7:addService	32	static
-../Core/Src/ble.c:323:7:addCharacteristic	32	static
-../Core/Src/ble.c:337:7:updateCharValue	40	static
-../Core/Src/ble.c:360:7:disconnectBLE	32	static
-../Core/Src/ble.c:388:7:setDiscoverability	24	static
+../Core/Src/ble.c:297:6:BLE_command	32	static
+../Core/Src/ble.c:322:7:addService	32	static
+../Core/Src/ble.c:335:7:addCharacteristic	32	static
+../Core/Src/ble.c:349:7:updateCharValue	40	static
+../Core/Src/ble.c:372:7:disconnectBLE	32	static
+../Core/Src/ble.c:400:7:setDiscoverability	24	static

@@ -94,7 +94,7 @@
 	 free(rxEvent);
 
 	 //This will start the advertisment,
-	 setConnectable();
+	 //setConnectable();
 
 	 //add the nordic UART service
 	 addService(UUID_NORDIC_UART_SERVICE,NORDIC_UART_SERVICE_HANDLE,SET_ATTRIBUTES(7)); //SET_ATTRIBUTES(1+2+3*2+3+3));//1 atribute service +2 attribute char readable+3*(2 NOTIFYABLE READABLE charachteristics)
@@ -250,15 +250,28 @@
 		memcpy(discoverableCommand,ACI_GAP_SET_DISCOVERABLE,sizeof(ACI_GAP_SET_DISCOVERABLE));
 		memcpy(discoverableCommand+sizeof(ACI_GAP_SET_DISCOVERABLE),localname,sizeof(deviceName)+5);
 
+		//HAL_Delay(100);
 		sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
 		rxEvent=(uint8_t*)malloc(7);
-		while(!dataAvailable);
+		while(!dataAvailable){
+			dataAvailable = 1;
+		}
 		res=fetchBleEvent(rxEvent,7);
 		if(res==BLE_OK){
-		res=checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7);
-		if(res==BLE_OK){
-			stackInitCompleteFlag|=0x80;
-		}
+			res=checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7);
+			if(res==BLE_OK){
+				stackInitCompleteFlag|=0x80;
+			}
+			else if (((*(rxEvent) == 0x04)) && (*(rxEvent + 2) == 0x04)){
+				setConnectable(0);
+				printf("Error discovered");
+				HAL_Delay(100);
+				sendCommand(discoverableCommand,sizeof(deviceName)+5+sizeof(ACI_GAP_SET_DISCOVERABLE));
+				res=fetchBleEvent(rxEvent,7);
+				if (res==BLE_OK && checkEventResp(rxEvent,ACI_GAP_SET_DISCOVERABLE_COMPLETE,7) == BLE_OK){
+					printf("YAY");
+				}
+			}
 		}
 
 		free(rxEvent);

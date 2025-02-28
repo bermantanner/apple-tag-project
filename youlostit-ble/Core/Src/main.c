@@ -60,6 +60,7 @@ void privtag_run();
 volatile uint8_t timer_flag = 0;	 	// timer flag which is set by interrupt handler, read/cleared by main loop
 volatile uint8_t is_lost = 0;		 	// flag for lost state.
 volatile uint32_t time_still = 0;	 	// value for how long device has been still
+volatile uint8_t send_message=0;
 
 
 // Redefine the libc _write() function so you can use printf in your code
@@ -123,6 +124,9 @@ void TIM2_IRQHandler()
     TIM2->SR &= ~TIM_SR_UIF;  	  // Clear interrupt flag
     timer_flag = 1;      	  	  // Set flag for main loop
 	time_still = time_still + 50; // Each time the the IRQHandler gets call (QUESTION: Should we have included this in the privtag_run instead?)
+    if((time_still % 10000) == 0){
+    	send_message = 1;
+    }
 }
 
 //This helper function grabs TWO bits from a particular sequence at a certain position
@@ -239,6 +243,7 @@ void privtag_run() {
 			        bit_position = 0;
 			        if (nonDiscoverable) {
 			            printf("Setting BLE Discoverable...\n");
+			            disconnectBLE();
 			            setDiscoverability(1);
 			            nonDiscoverable = 0;
 			            printf("BLE should now be discoverable.\n");
@@ -272,7 +277,7 @@ void privtag_run() {
 				uint32_t seconds_since_lost = (time_still - LOST_TIME_THRESHOLD) / 1000;
 
 
-				if ((time_still % 10000) == 0) {
+				if (send_message) {
 					unsigned char formatted_str[32];
 					snprintf((char*)formatted_str, sizeof(formatted_str), "%s %us", device_name, seconds_since_lost);
 
@@ -280,6 +285,7 @@ void privtag_run() {
 					int str_len = strlen((char*)formatted_str);
 
 					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
+					send_message = 0;
 				}
 
 
