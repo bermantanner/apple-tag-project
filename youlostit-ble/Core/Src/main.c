@@ -52,15 +52,12 @@ void privtag_run();
 
 #define MOVEMENT_THRESHOLD 4000     	// Max movement until movement triggered
 #define LOST_TIME_THRESHOLD 60000  		// 60 seconds in milliseconds
-#define PREAMBLE 0b01100110       		// 8-bit preamble
-#define USER_ID  0b0001101011011100 	// 16-bit ID (6876)
-#define TOTAL_BITS 32					// 8 bit preamble + 16 bit userID + 8 bit time since lost
 
 // Global Variables for states
 volatile uint8_t timer_flag = 0;	 	// timer flag which is set by interrupt handler, read/cleared by main loop
 volatile uint8_t is_lost = 0;		 	// flag for lost state.
 volatile uint32_t time_still = 0;	 	// value for how long device has been still
-volatile uint8_t send_message=0;
+volatile uint8_t send_message = 0;		// flag to trigger a BLE message every 10 seconds
 
 
 // Redefine the libc _write() function so you can use printf in your code
@@ -71,7 +68,6 @@ int _write(int file, char *ptr, int len) {
     }
     return len;
 }
-
 
 
 /**
@@ -95,93 +91,63 @@ int main(void)
   HAL_Delay(10);
   HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
 
+  // Initialize the ble configurations
   ble_init();
 
-  HAL_Delay(10);
-
-//  while (1)
-//  {
-//	  if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-//	    catchBLE();
-//	  }else{
-//		  HAL_Delay(100);
-//		  // Send a string to the NORDIC UART service, remember to not include the newline
-//		  unsigned char test_str[] = "Ws husbad. h";
-//		  updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
-//	  }
-//	  // Wait for interrupt, only uncomment if low power is needed
-//	  //__WFI();
-//  }
-
-  privtag_run();						// Call the privtag_run function to start the "application"
-  printf("HELO");
-  	for(;;);							// Infinite loop so the program keeps running (the priv_tag should run forever though since there is a infinite while loop in there)
+  privtag_run();				   // Call the privtag_run function to start the "application"
+  	for(;;);					   // Infinite loop so the program keeps running (the priv_tag should run forever though since there is a infinite while loop in there)
 
 }
 
 void TIM2_IRQHandler()
 {
-    TIM2->SR &= ~TIM_SR_UIF;  	  // Clear interrupt flag
-    timer_flag = 1;      	  	  // Set flag for main loop
-	time_still = time_still + 50; // Each time the the IRQHandler gets call (QUESTION: Should we have included this in the privtag_run instead?)
-    if((time_still % 10000) == 0){
+    TIM2->SR &= ~TIM_SR_UIF;  	   // Clear interrupt flag
+    timer_flag = 1;      	  	   // Set flag for main loop
+	time_still = time_still + 50;  // Each time the the IRQHandler gets call, time has percisely increased by 50ms
+    if((time_still % 10000) == 0){ // 10000ms = 10s (Checking to change send message flag every 10 seconds
     	send_message = 1;
     }
 }
 
-//This helper function grabs TWO bits from a particular sequence at a certain position
-uint8_t get_led_bits(uint32_t sequence, uint8_t position) {
-	//Shifts the sequence to the right by by the total bits - the current bit position so that it goes into the 2 least significant bits
-	//Then mask the bit 0b11 to get the 2 least significant bits
-    return (sequence >> ((TOTAL_BITS - 2) - position)) & 0b11;
-}
-
 void privtag_run() {
 	//Initialize peripherals
-	leds_init();
 	i2c_init();
 	lsm6dsl_init();
 
-	//Initialize timer to be in 50 ms intervals
+	// Initialize timer to be in 50 ms intervals
 	timer_init(TIM2);
 	timer_set_ms(TIM2, 50);
 
-	//x y z variables to hold current accelerations in the x y z acceleration values
+	// x y z variables to hold current accelerations in the x y z acceleration values
 	int16_t x, y, z;
 
 	//prev_x, prev_y and prev_z variables to hold the previous x y z acceleration values
-	int16_t prev_x, prev_y, prev_z;
+	int16_t prev_x = 0, prev_y = 0, prev_z = 0;
 
-	//delta_x, delta_y, and delta_z variables to hold the changes in the x y z values
+	// delta_x, delta_y, and delta_z variables to hold the changes in the x y z values
 	int32_t delta_x, delta_y, delta_z;
 
-	//A variable used to hold the magnitude of the total movement from all direction
+	// A variable used to hold the magnitude of the total movement from all direction
 	int32_t total_movement;
 
-	//A flag to determine if the device has moved
+	// A flag to determine if the device has moved
 	uint8_t device_moved_flag;
 
-	//A variable use to hold the minutes that the device has been lost
+	// Variable to store the minutes since lost (for project 2)
 	uint8_t minutes_since_lost = 0;
 
-	// A 32 bit binary variable that holds the 32 bits sequence that we will blink if we are in lost mode
-	uint32_t full_sequence;
-
-	// A variable to hold the LED bits that we want to turn ON
-	uint8_t LED_bits;
-
-	//Set the current bit position to be the first position
-	// 0b 00 00 00 00 00 00 00 00 ... 00
-	//     0  2  4  6  8 12 14 16 ... 32
-	uint8_t bit_position = 0;			//Bit position for LED sequence
-
+	// Variable to store the seconds since lost
 	uint32_t seconds_since_lost = 0;
+
+	// A string to hold the second since lost as a string
 	char seconds_since_lost_str[20];
 
+	// First disconnect the device, set the discoverability to be false because we are not in lost mode yet, and set the non discoverable flag to be true
 	disconnectBLE();
-	setDiscoverability(0);  // Disable BLE advertising
+	setDiscoverability(0);
 	uint8_t nonDiscoverable = 1;
 
+	// Hard coded name for the device
 	unsigned char device_name[] = "TaneTag";
 
 	while (1) {
@@ -190,7 +156,7 @@ void privtag_run() {
 				catchBLE();
 		}
 
-		if (timer_flag) { 			       // Every time there is a timer tick (currently set at 100ns intervals (1/10 s))...
+		if (timer_flag) { 			       // This triggers every 50 ms
 			timer_flag = 0; 			   // Reset the timer flag
 			lsm6dsl_read_xyz(&x, &y, &z);  // Read acceleration data
 
@@ -220,132 +186,50 @@ void privtag_run() {
 				is_lost = 0;										 // If device moved, turn is lost mode to be OFF
 				time_still = 0;										 // If device moved, reset the time that it was still to be 0
 				minutes_since_lost = 0;								 // If device moved, reset the minutes since lost to be 0
+				seconds_since_lost = 0;								 // If device moved, reset the seconds since lost to be 0
+				// If the device is not in nonDiscoverable mode and it moved, then we disconnect the device first, then we set the discoverability to be false, and set the nonDiscoverable flag to be true
 				if (!nonDiscoverable) {
 						disconnectBLE();
-				        setDiscoverability(0);  // Disable BLE advertising
+				        setDiscoverability(0);
 				        nonDiscoverable = 1;
 				}
-
-//				if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-//						catchBLE();
-//						disconnectBLE();
-//						setDiscoverability(0);  // Disable BLE advertising
-//						nonDiscoverable = 1;
-//				}
-//
-//				setDiscoverability(0);  // Disable BLE advertising
-//				nonDiscoverable = 1;
 			}
 			else {
-			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) {
-			        printf("Entering lost mode...\n");
+			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) { // If the device has been there for long as the threshold, and it is not currently lost, turn on lost mode
 			        is_lost = 1;
-			        bit_position = 0;
+			        //If the device is in non discoverable mode, then we set the discoverability to be true, and set the nonDiscoverable flag to be false
 			        if (nonDiscoverable) {
-			            printf("Setting BLE Discoverable...\n");
-			            disconnectBLE();
 			            setDiscoverability(1);
 			            nonDiscoverable = 0;
-			            printf("BLE should now be discoverable.\n");
 			        }
 			    }
 			}
 
-			if (is_lost) { // If we are in lost mode, then we can start blinking the bit sequence
-
-//		        if (nonDiscoverable) {
-//		            printf("Setting BLE Discoverable...\n");
-//		            setDiscoverability(1);
-//		            nonDiscoverable = 0;
-//		            printf("BLE should now be discoverable.\n");
-//		        }
-
+			if (is_lost) { //LOST MODE!
 				// Calculates the total minutes lost
 				minutes_since_lost = ((time_still - LOST_TIME_THRESHOLD) / LOST_TIME_THRESHOLD) + 1;
 
-				//Shift the preamble, user id, and the minutes since lost into their right spot
-				full_sequence = ((uint32_t)PREAMBLE << 24) | ((uint32_t)USER_ID << 8) | (uint32_t)(minutes_since_lost);
-
-				//Mask out only the led bits that we want to turn on
-				LED_bits = get_led_bits(full_sequence, bit_position);
-
-				//Turn on the LED(s)
-				leds_set(LED_bits);
-
-				// calculating minutes lost
-				//uint8_t minutes_since_lost = (time_still - LOST_TIME_THRESHOLD) / 60000;
+				// Calculates the total seconds lost
 				uint32_t seconds_since_lost = (time_still - LOST_TIME_THRESHOLD) / 1000;
 
-
+				// If the send message flag is set, send a message to the user
 				if (send_message) {
+					//Build the string to send out
 					unsigned char formatted_str[32];
 					snprintf((char*)formatted_str, sizeof(formatted_str), "%s %us", device_name, seconds_since_lost);
 
 					// Use strlen to get the actual string length
 					int str_len = strlen((char*)formatted_str);
 
+					// Send the message to the user
 					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
 					send_message = 0;
 				}
-
-
-//				static uint32_t last_print_time = 0;
-
-//				if (time_still - last_print_time >= 10000) {
-//
-//					//“PrivTag <tagname> has been missing for <N> seconds”.
-//
-//					itoa(seconds_since_lost, seconds_since_lost_str, 20);
-//
-//				    printf("10 SECONDS!\n");
-//				    last_print_time = time_still; // Update the last print time
-//				    if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-//				    	catchBLE();
-//					}
-//				    else{
-//						// Send a string to the NORDIC UART service, remember to not include the newline
-//						unsigned char test_str[] = "PrivTag";
-//						updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
-//						unsigned char second_str[] = "has been";
-//						updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(second_str)-1, second_str);
-//				    }
-//
-//				    seconds_since_lost += 10;
-//				}
-
-//				if (time_still - last_print_time >= 10000) {
-//					itoa(seconds_since_lost, seconds_since_lost_str, 10);
-//
-//
-//					unsigned char test_str[] = "TaneTag lost: ";
-//					strcat(test_str, seconds_since_lost_str);
-//					strcat(test_str, "s");
-//					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
-//
-////					unsigned char test_str[] = "PrivTag TaneTag";
-////					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
-////					unsigned char second_str[] = "has b33n missing";
-////					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(second_str)-1, second_str);
-////					unsigned char third_str[] = "for ";
-////					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(third_str)-1, third_str);
-////					printf("%s", seconds_since_lost_str);
-////					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(seconds_since_lost_str)-1, seconds_since_lost_str);
-////					unsigned char fourth_str[] = " seconds";
-////					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(fourth_str)-1, fourth_str);
-//
-//					last_print_time = time_still;
-//	//				strcat(third_str, seconds_since_lost_str);
-//	//				strcat(third_str, "seconds");
-//	//				strcat(third_str, "\n");
-//					seconds_since_lost += 100;
-//				}
-
+				//Debugging print statements
 				printf("(LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
-
 			}
 			else {
-				//Turn off the led for the next time it goes into lost mode
-				leds_set(0);
+				//Debugging print statements
 				printf("(NOT LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
 			}
 		}

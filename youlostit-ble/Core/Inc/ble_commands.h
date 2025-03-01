@@ -70,14 +70,31 @@
 
  uint8_t UPDATE_CHAR[]={0x01,0x06,0xFD,0x09,0xff,0xff,0xff,0xff,0x01,0x01,0x01,0x01,0x01,0x01,0x01};
 
- uint8_t DISCONNECT[] = { 0x01, 0x06, 0x04, 0x03 }; // TODO - fill this in
+ // EXPLAINING DISCONNECT[] VALUES
+ // 0x01 is the HCI Command Packet Indicator
+ // 0x06, 0x04 make up the opcode for the HCI_Disconnect command. Lower byte is 0x06, higher is 0x04
+ // 0x03 is the parameter length, for HCI_Disconnect we have 2‑byte connection handle and a 1‑byte reason code
+ uint8_t DISCONNECT[] = { 0x01, 0x06, 0x04, 0x03 }; // 0x01 is the HCI Command Packet Indicator
  uint8_t EVENT_DISCONNECTED[]={0x04,0x05,0x04,0x00};
  uint8_t EVENT_DISCONNECT_PENDING[] = {0x04, 0x0F, 0x04, 0x00, 0x01, 0x06, 0x04};
 
  uint8_t EVENT_CONNECTED[] = {0x04, 0x3E, 0x13, 0x01, 0x00};
  uint8_t EVENT_GATT_CHANGED[] = {0x04, 0xFF, 0x0B, 0x01, 0x0C};
 
- uint8_t ACI_GAP_SET_NON_DISCOVERABLE[] = { 0x01, 0x81, 0xfc, 0x00}; // TODO - fill this in
+ //EXPLAINING ACI_GAP_SET_NON_DISCOVERABLE[] VALUES
+ // 0x01 is once again, the HCI Command Packet Indicator
+ // 0x81, 0xFC form the opcode for our specific ACI command "Set Non-Discoverable) --> 0xFC81
+ // 0x00 is the parameter length, which there are zero for this command.
+ uint8_t ACI_GAP_SET_NON_DISCOVERABLE[] = { 0x01, 0x81, 0xfc, 0x00};
+
+ //EXPLAINING ACI_GAP_SET_NON_DISCOVERABLE_COMPLETE[] VALUES
+ // 0x04 This time we have the HCI Event Packet Indicator
+ // 0x0E is the event code for "Command Complete" event
+ // 0x04 This is the parameter total length
+ // 0x01 This is the number of hci command packets allowed to be sent to the controller at once
+ // 0x81, 0xFC these are echoing the opcode of the previous command executed (which was 0xFC81). I think this is so we can match up the complete event to the correct command
+ // 0x00 This is the status byte. 00 means that it was successful.
+
  uint8_t ACI_GAP_SET_NON_DISCOVERABLE_COMPLETE[] = {0x04, 0x0e, 0x04, 0x01, 0x81, 0xfc, 0x00}; // TODO - fill this in
 
 
