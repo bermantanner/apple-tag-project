@@ -2,8 +2,8 @@
 ../Core/Src/main.c:64:5:_write	2
 ../Core/Src/main.c:77:5:main	1
 ../Core/Src/main.c:102:6:TIM2_IRQHandler	2
-../Core/Src/main.c:112:6:privtag_run	12
-../Core/Src/main.c:244:6:SystemClock_Config	4
-../Core/Src/main.c:290:13:MX_SPI3_Init	2
-../Core/Src/main.c:330:13:MX_GPIO_Init	1
-../Core/Src/main.c:389:6:Error_Handler	1
+../Core/Src/main.c:112:6:privtag_run	13
+../Core/Src/main.c:266:6:SystemClock_Config	4
+../Core/Src/main.c:312:13:MX_SPI3_Init	2
+../Core/Src/main.c:352:13:MX_GPIO_Init	1
+../Core/Src/main.c:411:6:Error_Handler	1

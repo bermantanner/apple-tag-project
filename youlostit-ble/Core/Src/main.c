@@ -103,7 +103,7 @@ void TIM2_IRQHandler()
 {
     TIM2->SR &= ~TIM_SR_UIF;  	   // Clear interrupt flag
     timer_flag = 1;      	  	   // Set flag for main loop
-	time_still = time_still + 50;  // Each time the the IRQHandler gets call, time has percisely increased by 50ms
+	time_still = time_still + 1000;  // Each time the the IRQHandler gets call, time has percisely increased by 50ms
     if((time_still % 10000) == 0){ // 10000ms = 10s (Checking to change send message flag every 10 seconds
     	send_message = 1;
     }
@@ -113,10 +113,24 @@ void privtag_run() {
 	//Initialize peripherals
 	i2c_init();
 	lsm6dsl_init();
+	leds_init();
+
+
+	FLASH->ACR &= ~0b111;
+	FLASH->ACR |= 0b000;
+
+	PWR->CR1 &= ~0b11000000000;
+	PWR->CR1 |=  0b10000000000;
+
+	while ((PWR->SR2 & PWR_SR2_VOSF) != 0)
+	{
+	    // Wait???
+	}
+
 
 	// Initialize timer to be in 50 ms intervals
 	timer_init(TIM2);
-	timer_set_ms(TIM2, 50);
+	timer_set_ms(TIM2, 1000);
 
 	// x y z variables to hold current accelerations in the x y z acceleration values
 	int16_t x, y, z;
@@ -233,6 +247,14 @@ void privtag_run() {
 				printf("(NOT LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
 			}
 		}
+
+		SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+
+				//clearing pending interrupts
+				__disable_irq();
+
+				__asm volatile ("wfi");
+				__enable_irq();
 	}
 }
 
