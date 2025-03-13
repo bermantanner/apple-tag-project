@@ -51,7 +51,7 @@ static void MX_SPI3_Init(void);
 void privtag_run();
 
 #define MOVEMENT_THRESHOLD 4000     	// Max movement until movement triggered
-#define LOST_TIME_THRESHOLD 60000  		// 60 seconds in milliseconds
+#define LOST_TIME_THRESHOLD 12000  		// 60 seconds in milliseconds
 
 // Global Variables for states
 volatile uint8_t timer_flag = 0;	 	// timer flag which is set by interrupt handler, read/cleared by main loop
@@ -80,7 +80,9 @@ int main(void)
   HAL_Init();
 
   /* Configure the system clock */
-  SystemClock_Config();
+  //SystemClock_Config();
+
+  SystemClock_LowPower_Config();
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -103,9 +105,31 @@ void TIM2_IRQHandler()
 {
     TIM2->SR &= ~TIM_SR_UIF;  	   // Clear interrupt flag
     timer_flag = 1;      	  	   // Set flag for main loop
-	time_still = time_still + 1000;  // Each time the the IRQHandler gets call, time has percisely increased by 50ms
+	time_still = time_still + 10000;  // Each time the the IRQHandler gets call, time has percisely increased by 50ms
     if((time_still % 10000) == 0){ // 10000ms = 10s (Checking to change send message flag every 10 seconds
     	send_message = 1;
+    }
+
+}
+
+void LPTIM1_IRQHandler(void)
+{
+	printf("HIHIHIHIHIHI\n");
+    // Check if Auto-Reload Match interrupt is triggered
+    if ((LPTIM1->ISR & LPTIM_ISR_ARRM) != 0) {
+        // Clear the interrupt flag
+        LPTIM1->ICR = LPTIM_ICR_ARRMCF;
+
+        // Set flag for main loop (equivalent to timer_flag)
+        timer_flag = 1;
+
+        // Increment time_still (now 1000 ms per interrupt instead of 50 ms)
+        time_still += 1000;
+
+        // Check for 10-second interval
+        if ((time_still % 10000) == 0) {
+            send_message = 1;
+        }
     }
 }
 
@@ -115,12 +139,12 @@ void privtag_run() {
 	lsm6dsl_init();
 	leds_init();
 
-
-	FLASH->ACR &= ~0b111;
-	FLASH->ACR |= 0b000;
-
-	PWR->CR1 &= ~0b11000000000;
-	PWR->CR1 |=  0b10000000000;
+//
+//	FLASH->ACR &= ~0b111;
+//	FLASH->ACR |= 0b000;
+//
+//	PWR->CR1 &= ~0b11000000000;
+//	PWR->CR1 |=  0b10000000000;
 
 	while ((PWR->SR2 & PWR_SR2_VOSF) != 0)
 	{
@@ -129,9 +153,10 @@ void privtag_run() {
 
 
 	// Initialize timer to be in 50 ms intervals
-	timer_init(TIM2);
-	timer_set_ms(TIM2, 1000);
-
+//	timer_init(TIM2);
+//	timer_set_ms(TIM2, 1000);
+	lptim_init();
+	set_low_timer_ms();
 	// x y z variables to hold current accelerations in the x y z acceleration values
 	int16_t x, y, z;
 
@@ -241,10 +266,12 @@ void privtag_run() {
 				}
 				//Debugging print statements
 				printf("(LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
+				printf("(LOST) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
 			}
 			else {
 				//Debugging print statements
 				printf("(NOT LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
+				printf("(NOT LOST) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
 			}
 		}
 
@@ -257,6 +284,93 @@ void privtag_run() {
 				__enable_irq();
 	}
 }
+
+
+void SystemClock_LowPower_Config(void)
+{
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+    /** Configure the main internal regulator output voltage
+    */
+    if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    /** Initializes the RCC Oscillators according to the specified parameters
+    * in the RCC_OscInitTypeDef structure.
+    */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+    RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+    RCC_OscInitStruct.MSICalibrationValue = 0;
+    RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_0;  // 100 kHz
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    /** Initializes the CPU, AHB and APB buses clocks
+    */
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+    |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    // Print current system clock frequency
+    printf("(LOST) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
+}
+
+void SystemClock_FullSpeed_Config(void)
+{
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+    /** Configure the main internal regulator output voltage
+    */
+    if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    /** Initializes the RCC Oscillators according to the specified parameters
+    * in the RCC_OscInitTypeDef structure.
+    */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+    RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+    RCC_OscInitStruct.MSICalibrationValue = 0;
+    RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_7;  // 8 MHz
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    /** Initializes the CPU, AHB and APB buses clocks
+    */
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+    |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    // Print current system clock frequency
+    printf("(FULL SPEED) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
+}
+
 
 /**
   * @brief System Clock Configuration
@@ -282,7 +396,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = 0;
   // This lines changes system clock frequency
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_7;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_0;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {

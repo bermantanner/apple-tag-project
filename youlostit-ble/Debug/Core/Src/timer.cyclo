@@ -3,3 +3,5 @@
 ../Core/Src/timer.c:14:6:timer_init	1
 ../Core/Src/timer.c:44:6:timer_reset	1
 ../Core/Src/timer.c:51:6:timer_set_ms	1
+../Core/Src/timer.c:70:6:lptim_init	4
+../Core/Src/timer.c:154:6:set_low_timer_ms	1
