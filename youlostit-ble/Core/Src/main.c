@@ -81,8 +81,7 @@ int main(void)
 
   /* Configure the system clock */
   //SystemClock_Config();
-
-  SystemClock_LowPower_Config();
+  SystemClock_FullSpeed_Config();
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -95,6 +94,8 @@ int main(void)
 
   // Initialize the ble configurations
   ble_init();
+
+  leds_set(0b11);
 
   privtag_run();				   // Call the privtag_run function to start the "application"
   	for(;;);					   // Infinite loop so the program keeps running (the priv_tag should run forever though since there is a infinite while loop in there)
@@ -114,7 +115,7 @@ void TIM2_IRQHandler()
 
 void LPTIM1_IRQHandler(void)
 {
-	printf("HIHIHIHIHIHI\n");
+
     // Check if Auto-Reload Match interrupt is triggered
     if ((LPTIM1->ISR & LPTIM_ISR_ARRM) != 0) {
         // Clear the interrupt flag
@@ -182,9 +183,15 @@ void privtag_run() {
 	char seconds_since_lost_str[20];
 
 	// First disconnect the device, set the discoverability to be false because we are not in lost mode yet, and set the non discoverable flag to be true
+
+
+	SystemClock_FullSpeed_Config();
+
 	disconnectBLE();
 	setDiscoverability(0);
 	uint8_t nonDiscoverable = 1;
+
+	SystemClock_LowPower_Config();
 
 	// Hard coded name for the device
 	unsigned char device_name[] = "TaneTag";
@@ -192,7 +199,11 @@ void privtag_run() {
 	while (1) {
 
 		if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-				catchBLE();
+			SystemClock_FullSpeed_Config();
+
+			catchBLE();
+
+			SystemClock_LowPower_Config();
 		}
 
 		if (timer_flag) { 			       // This triggers every 50 ms
@@ -222,24 +233,34 @@ void privtag_run() {
 
 			//If device DID move.
 			if (device_moved_flag) {
+				leds_set(0b11);
 				is_lost = 0;										 // If device moved, turn is lost mode to be OFF
 				time_still = 0;										 // If device moved, reset the time that it was still to be 0
 				minutes_since_lost = 0;								 // If device moved, reset the minutes since lost to be 0
 				seconds_since_lost = 0;								 // If device moved, reset the seconds since lost to be 0
 				// If the device is not in nonDiscoverable mode and it moved, then we disconnect the device first, then we set the discoverability to be false, and set the nonDiscoverable flag to be true
 				if (!nonDiscoverable) {
-						disconnectBLE();
-				        setDiscoverability(0);
-				        nonDiscoverable = 1;
+					SystemClock_FullSpeed_Config();
+
+					disconnectBLE();
+				    setDiscoverability(0);
+				    nonDiscoverable = 1;
+
+				    SystemClock_LowPower_Config();
 				}
 			}
 			else {
 			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) { // If the device has been there for long as the threshold, and it is not currently lost, turn on lost mode
 			        is_lost = 1;
+			        leds_set(0b00);
 			        //If the device is in non discoverable mode, then we set the discoverability to be true, and set the nonDiscoverable flag to be false
 			        if (nonDiscoverable) {
+			        	SystemClock_FullSpeed_Config();
+
 			            setDiscoverability(1);
 			            nonDiscoverable = 0;
+
+			            SystemClock_LowPower_Config();
 			        }
 			    }
 			}
@@ -253,6 +274,11 @@ void privtag_run() {
 
 				// If the send message flag is set, send a message to the user
 				if (send_message) {
+
+					SystemClock_FullSpeed_Config();
+
+					leds_set(0b01);
+
 					//Build the string to send out
 					unsigned char formatted_str[32];
 					snprintf((char*)formatted_str, sizeof(formatted_str), "%s %us", device_name, seconds_since_lost);
@@ -263,6 +289,10 @@ void privtag_run() {
 					// Send the message to the user
 					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
 					send_message = 0;
+
+					leds_set(0b10);
+
+					SystemClock_LowPower_Config();
 				}
 				//Debugging print statements
 				printf("(LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
@@ -277,11 +307,11 @@ void privtag_run() {
 
 		SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
 
-				//clearing pending interrupts
-				__disable_irq();
+		//clearing pending interrupts
+		__disable_irq();
 
-				__asm volatile ("wfi");
-				__enable_irq();
+		__asm volatile ("wfi");
+		__enable_irq();
 	}
 }
 
