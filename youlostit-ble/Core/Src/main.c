@@ -33,7 +33,6 @@
 #include "timer.h"
 #include "i2c.h"
 #include "lsm6dsl.h"
-#include "leds.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -82,6 +81,7 @@ int main(void)
   /* Configure the system clock */
   //SystemClock_Config();
   SystemClock_FullSpeed_Config();
+  //disable_unused_peripherals_register();
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -91,29 +91,184 @@ int main(void)
   HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
   HAL_Delay(10);
   HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
+  HAL_Delay(10);
 
   // Initialize the ble configurations
   ble_init();
 
-  privtag_run();				   // Call the privtag_run function to start the "application"
-  	for(;;);					   // Infinite loop so the program keeps running (the priv_tag should run forever though since there is a infinite while loop in there)
+//  privtag_run();				   // Call the privtag_run function to start the "application"
+  //Initialize peripherals
+  	//PWR->CR1 |= PWR_CR1_LPR;
 
-}
+  	i2c_init();
+  	lsm6dsl_init();
 
-void TIM2_IRQHandler()
-{
-    TIM2->SR &= ~TIM_SR_UIF;  	   // Clear interrupt flag
-    timer_flag = 1;      	  	   // Set flag for main loop
-	time_still = time_still + 10000;  // Each time the the IRQHandler gets call, time has percisely increased by 50ms
-    if((time_still % 10000) == 0){ // 10000ms = 10s (Checking to change send message flag every 10 seconds
-    	send_message = 1;
-    }
+  	FLASH->ACR &= ~0b111;
+  	FLASH->ACR |= 0b000;
+
+  	PWR->CR1 &= ~0b11000000000;
+  	PWR->CR1 |=  0b10000000000;
+
+  	while ((PWR->SR2 & PWR_SR2_VOSF) != 0)
+  	{
+  	    // Wait???
+  	}
+
+  	lptim_init();
+  	set_low_timer_ms();
+  	// x y z variables to hold current accelerations in the x y z acceleration values
+  	int16_t x, y, z;
+
+  	//prev_x, prev_y and prev_z variables to hold the previous x y z acceleration values
+  	int16_t prev_x = 0, prev_y = 0, prev_z = 0;
+
+  	// delta_x, delta_y, and delta_z variables to hold the changes in the x y z values
+  	int32_t delta_x, delta_y, delta_z;
+
+  	// A variable used to hold the magnitude of the total movement from all direction
+  	int32_t total_movement;
+
+  	// A flag to determine if the device has moved
+  	uint8_t device_moved_flag;
+
+  	// Variable to store the minutes since lost (for project 2)
+  	uint8_t minutes_since_lost = 0;
+
+  	// Variable to store the seconds since lost
+  	uint32_t seconds_since_lost = 0;
+
+  	// A string to hold the second since lost as a string
+  	char seconds_since_lost_str[20];
+
+  	// First disconnect the device, set the discoverability to be false because we are not in lost mode yet, and set the non discoverable flag to be true
+  	///SystemClock_FullSpeed_Config();
+
+  	disconnectBLE();
+  	setDiscoverability(0);
+  	uint8_t nonDiscoverable = 1;
+  	standbyBle();
+
+  	disableUselessShit();
+
+
+  	//SystemClock_LowPower_Config();
+
+  	//disable_unused_peripherals_register();
+
+  	// Hard coded name for the device
+  	unsigned char device_name[] = "TaneTag";
+
+  	while (1) {
+
+  		if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+  			//SystemClock_FullSpeed_Config();
+
+  			catchBLE();
+
+  			//SystemClock_LowPower_Config();
+  		}
+
+  		if (timer_flag) { 			       // This triggers every 50 ms
+  			timer_flag = 0; 			   // Reset the timer flag
+  			lsm6dsl_read_xyz(&x, &y, &z);  // Read acceleration data
+
+  			// Calculate total magnitude of change in movement
+  			delta_x = abs(x - prev_x);
+  			delta_y = abs(y - prev_y);
+  			delta_z = abs(z - prev_z);
+
+  			// Calculate the the total movement
+  			total_movement = delta_x + delta_y + delta_z;
+
+  			//Saves the current x y z values as the prev_x, prev_y, and prev_z for the next iteration
+  			prev_x = x;
+  			prev_y = y;
+  			prev_z = z;
+
+  			//If our device's total movement is beyond threshold, update device moved flag.
+  			if (total_movement > MOVEMENT_THRESHOLD) {
+  				device_moved_flag = 1;
+  			}
+  			else {
+  				device_moved_flag = 0;
+  			}
+
+
+  			//If device DID move.
+  			if (device_moved_flag) {
+  				is_lost = 0;										 // If device moved, turn is lost mode to be OFF
+  				time_still = 0;										 // If device moved, reset the time that it was still to be 0
+  				minutes_since_lost = 0;								 // If device moved, reset the minutes since lost to be 0
+  				seconds_since_lost = 0;								 // If device moved, reset the seconds since lost to be 0
+				disconnectBLE();
+  				// If the device is not in nonDiscoverable mode and it moved, then we disconnect the device first, then we set the discoverability to be false, and set the nonDiscoverable flag to be true
+  				if (!nonDiscoverable) {
+  					//SystemClock_FullSpeed_Config();
+  				    setDiscoverability(0);
+
+  				    nonDiscoverable = 1;
+
+  				    //SystemClock_LowPower_Config();
+  				}
+  				standbyBle();
+
+  			}
+  			else {
+  			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) { // If the device has been there for long as the threshold, and it is not currently lost, turn on lost mode
+  			        is_lost = 1;
+  			        //If the device is in non discoverable mode, then we set the discoverability to be true, and set the nonDiscoverable flag to be false
+
+
+
+  			        if (nonDiscoverable) {
+  			        	//SystemClock_FullSpeed_Config();
+
+  			            setDiscoverability(1);
+  			            nonDiscoverable = 0;
+
+  			            //SystemClock_LowPower_Config();
+  			        }
+  			    }
+
+  			}
+
+
+  			if (is_lost) { //LOST MODE!
+  				// Calculates the total minutes lost
+  				minutes_since_lost = ((time_still - LOST_TIME_THRESHOLD) / LOST_TIME_THRESHOLD) + 1;
+
+  				// Calculates the total seconds lost
+  				uint32_t seconds_since_lost = (time_still - LOST_TIME_THRESHOLD) / 1000;
+
+  				// If the send message flag is set, send a message to the user
+  				if (send_message) {
+
+  					//SystemClock_FullSpeed_Config();
+
+  					//Build the string to send out
+  					unsigned char formatted_str[32];
+  					snprintf((char*)formatted_str, sizeof(formatted_str), "%s %us", device_name, seconds_since_lost);
+
+  					// Use strlen to get the actual string length
+  					int str_len = strlen((char*)formatted_str);
+
+  					// Send the message to the user
+  					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
+  					send_message = 0;
+
+  					//SystemClock_LowPower_Config();
+  				}
+  			}
+  		}
+  		HAL_SuspendTick();
+  		HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
+  		HAL_ResumeTick();
+  	}
 
 }
 
 void LPTIM1_IRQHandler(void)
 {
-
     // Check if Auto-Reload Match interrupt is triggered
     if ((LPTIM1->ISR & LPTIM_ISR_ARRM) != 0) {
         // Clear the interrupt flag
@@ -132,248 +287,257 @@ void LPTIM1_IRQHandler(void)
     }
 }
 
-void privtag_run() {
-	//Initialize peripherals
-	PWR->CR1 |= PWR_CR1_LPR;
+void disableUselessShit() {
 
-	i2c_init();
-	lsm6dsl_init();
-	//leds_init();
+	// Disable DMA1
+	RCC->AHB1ENR &= ~(RCC_AHB1ENR_DMA1EN);
 
+	// Disable DMA2
+	RCC->AHB1ENR &= ~(RCC_AHB1ENR_DMA2EN);
 
+	// Disable Flash (Be very careful with this!)
+	RCC->AHB1ENR &= ~(RCC_AHB1ENR_FLASHEN);
+
+	// Disable CRC
+	RCC->AHB1ENR &= ~(RCC_AHB1ENR_CRCEN);
+
+	// Disable Touch Sensing Controller
+	RCC->AHB1ENR &= ~(RCC_AHB1ENR_TSCEN);
+
+	//EVERYTHING WORKS WELL
+
+	// Disable GPIO Ports
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOAEN);
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOBEN);
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOCEN);
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOFEN);
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOGEN);
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOHEN);
+
+	// Disable ADC
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_ADCEN);
+
+	// Disable RNGEN
+
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_RNGEN);
+
+	// Disable Random Number Generator
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_RNGEN);
+
+	// Everything works
+
+	// Disable QSPI (Quad SPI memory interface)
+	RCC->AHB3ENR &= ~(RCC_AHB3ENR_QSPIEN);
+
+	// Disable Flexible Memory Controller (FMC)
+	RCC->AHB3ENR &= ~(RCC_AHB3ENR_FMCEN);
+
+	// Bit 29: OPAMPEN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_OPAMPEN);
+
+	// Bit 28: DAC1EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_DAC1EN);
 //
-//	FLASH->ACR &= ~0b111;
-//	FLASH->ACR |= 0b000;
+//	// Bit 26: Reserved (do not modify)
 //
-//	PWR->CR1 &= ~0b11000000000;
-//	PWR->CR1 |=  0b10000000000;
+	// Bit 24: CAN1EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_CAN1EN);
 
-//	while ((PWR->SR2 & PWR_SR2_VOSF) != 0)
-//	{
-//	    // Wait???
-//	}
+	// Disable Window Watchdog Timer
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_WWDGEN);
 
+	// Bit 23: I2C3EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_I2C3EN);
 
-	// Initialize timer to be in 50 ms intervals
-//	timer_init(TIM2);
-//	timer_set_ms(TIM2, 1000);
-	lptim_init();
-	set_low_timer_ms();
-	// x y z variables to hold current accelerations in the x y z acceleration values
-	int16_t x, y, z;
+	// Bit 22: I2C2EN (keeping this enabled as per your instruction)
 
-	//prev_x, prev_y and prev_z variables to hold the previous x y z acceleration values
-	int16_t prev_x = 0, prev_y = 0, prev_z = 0;
+	// Bit 21: I2C1EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_I2C1EN);
 
-	// delta_x, delta_y, and delta_z variables to hold the changes in the x y z values
-	int32_t delta_x, delta_y, delta_z;
+	// Bit 20-19: Reserved (do not modify)
 
-	// A variable used to hold the magnitude of the total movement from all direction
-	int32_t total_movement;
+	// Bit 18: UART5EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_UART5EN);
 
-	// A flag to determine if the device has moved
-	uint8_t device_moved_flag;
+	// Bit 17: UART4EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_UART4EN);
 
-	// Variable to store the minutes since lost (for project 2)
-	uint8_t minutes_since_lost = 0;
+	// Bit 16: USART3EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_USART3EN);
 
-	// Variable to store the seconds since lost
-	uint32_t seconds_since_lost = 0;
+	// Bit 15: USART2EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_USART2EN);
 
-	// A string to hold the second since lost as a string
-	char seconds_since_lost_str[20];
+	// Bit 14-13: Reserved (do not modify)
 
-	// First disconnect the device, set the discoverability to be false because we are not in lost mode yet, and set the non discoverable flag to be true
-
-
-	SystemClock_FullSpeed_Config();
-	// Switch to high-speed MSI (8MHz)
-	//RCC->CR = (RCC->CR & ~RCC_CR_MSIRANGE_Msk) | (RCC_CR_MSIRANGE_8 << RCC_CR_MSIRANGE_Pos) | RCC_CR_MSIRGSEL;
-
-
-	disconnectBLE();
-	setDiscoverability(0);
-	uint8_t nonDiscoverable = 1;
-
-	SystemClock_LowPower_Config();
-
-	// Switch to low-power MSI (100kHz)
-	//RCC->CR = (RCC->CR & ~RCC_CR_MSIRANGE_Msk) | (RCC_CR_MSIRANGE_0 << RCC_CR_MSIRANGE_Pos) | RCC_CR_MSIRGSEL;
-
-	disable_unused_peripherals_register();
-
-	// Hard coded name for the device
-	unsigned char device_name[] = "TaneTag";
-
-	while (1) {
-
-//        SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;  // Ensure standard sleep mode
-//        __disable_irq();
-//        //HAL_SuspendTick();
-//        __WFI();  // Immediately wait for interrupt
-//        __enable_irq();
-//        //HAL_ResumeTick();
-
-
-		if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-			SystemClock_FullSpeed_Config();
-
-			catchBLE();
-
-			SystemClock_LowPower_Config();
-		}
-
-		if (timer_flag) { 			       // This triggers every 50 ms
-			timer_flag = 0; 			   // Reset the timer flag
-			lsm6dsl_read_xyz(&x, &y, &z);  // Read acceleration data
-
-			// Calculate total magnitude of change in movement
-			delta_x = abs(x - prev_x);
-			delta_y = abs(y - prev_y);
-			delta_z = abs(z - prev_z);
-
-			// Calculate the the total movement
-			total_movement = delta_x + delta_y + delta_z;
-
-			//Saves the current x y z values as the prev_x, prev_y, and prev_z for the next iteration
-			prev_x = x;
-			prev_y = y;
-			prev_z = z;
-
-			//If our device's total movement is beyond threshold, update device moved flag.
-			if (total_movement > MOVEMENT_THRESHOLD) {
-				device_moved_flag = 1;
-			}
-			else {
-				device_moved_flag = 0;
-			}
-
-			//If device DID move.
-			if (device_moved_flag) {
-				//leds_set(0b11);
-				is_lost = 0;										 // If device moved, turn is lost mode to be OFF
-				time_still = 0;										 // If device moved, reset the time that it was still to be 0
-				minutes_since_lost = 0;								 // If device moved, reset the minutes since lost to be 0
-				seconds_since_lost = 0;								 // If device moved, reset the seconds since lost to be 0
-				// If the device is not in nonDiscoverable mode and it moved, then we disconnect the device first, then we set the discoverability to be false, and set the nonDiscoverable flag to be true
-				if (!nonDiscoverable) {
-					SystemClock_FullSpeed_Config();
-
-					disconnectBLE();
-				    setDiscoverability(0);
-
-				    nonDiscoverable = 1;
-
-				    SystemClock_LowPower_Config();
-				}
-
-			}
-			else {
-			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) { // If the device has been there for long as the threshold, and it is not currently lost, turn on lost mode
-			        is_lost = 1;
-			        // leds_set(0b00);
-			        //If the device is in non discoverable mode, then we set the discoverability to be true, and set the nonDiscoverable flag to be false
-			        if (nonDiscoverable) {
-			        	SystemClock_FullSpeed_Config();
-
-			            setDiscoverability(1);
-			            nonDiscoverable = 0;
-
-			            SystemClock_LowPower_Config();
-			        }
-			    }
-			}
-
-
-			if (is_lost) { //LOST MODE!
-				// Calculates the total minutes lost
-				minutes_since_lost = ((time_still - LOST_TIME_THRESHOLD) / LOST_TIME_THRESHOLD) + 1;
-
-				// Calculates the total seconds lost
-				uint32_t seconds_since_lost = (time_still - LOST_TIME_THRESHOLD) / 1000;
-
-				// If the send message flag is set, send a message to the user
-				if (send_message) {
-
-					SystemClock_FullSpeed_Config();
-
-					//leds_set(0b01);
-
-					//Build the string to send out
-					unsigned char formatted_str[32];
-					snprintf((char*)formatted_str, sizeof(formatted_str), "%s %us", device_name, seconds_since_lost);
-
-					// Use strlen to get the actual string length
-					int str_len = strlen((char*)formatted_str);
-
-					// Send the message to the user
-					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
-					send_message = 0;
-
-					//leds_set(0b10);
-
-					SystemClock_LowPower_Config();
-				}
-			}
-		}
-
-//        SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;  // Ensure standard sleep mode
-//        //__disable_irq();
-//        HAL_SuspendTick();
-//        __WFI();  // Immediately wait for interrupt
-//        //__enable_irq();
-//        HAL_ResumeTick();
-		// At the end of your main loop, before STOP2 mode
-
-		HAL_SuspendTick();
-		HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
-		HAL_ResumeTick();
-		//enter_stop2_mode();
+	// Bit 11: SPI2EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_SPI2EN);
 //
-//		if (!timer_flag && !HAL_GPIO_ReadPin(BLE_INT_GPIO_Port, BLE_INT_Pin)) {
-//		        enter_stop2_mode();
-//		}
-	}
+//	// Bit 10-9: Reserved (do not modify)
+//
+	// Bit 8: TIM7EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM7EN);
+
+	// Bit 7: TIM6EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM6EN);
+
+	// Bit 6: TIM5EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM5EN);
+
+	// Bit 5: TIM4EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM4EN);
+
+	// Bit 4: TIM3EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM3EN);
+
+	// Bit 3: TIM2EN
+	RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM2EN);
+
+//	// Bit 2-1: Reserved (do not modify)
+//
+//	// Bit 0: Reserved (do not modify)
+
+
+	//EVERYTHING WORKKS
+
+
+	// Disable LPTIM2
+	RCC->APB1ENR2 &= ~(RCC_APB1ENR2_LPTIM2EN);
+
+	// Disable Single Wire Protocol (SWPMI1)
+	RCC->APB1ENR2 &= ~(RCC_APB1ENR2_SWPMI1EN);
+
+	// Disable LPUART1
+	RCC->APB1ENR2 &= ~(RCC_APB1ENR2_LPUART1EN);
+
+	//Everything works
+
+	// Disable DFSDM1
+	RCC->APB2ENR &= ~(RCC_APB2ENR_DFSDM1EN);
+
+	// Disable SAI2
+	RCC->APB2ENR &= ~(RCC_APB2ENR_SAI2EN);
+
+	// Disable SAI1
+	RCC->APB2ENR &= ~(RCC_APB2ENR_SAI1EN);
+
+	// Disable Timers
+	RCC->APB2ENR &= ~(RCC_APB2ENR_TIM17EN);
+	RCC->APB2ENR &= ~(RCC_APB2ENR_TIM16EN);
+	RCC->APB2ENR &= ~(RCC_APB2ENR_TIM15EN);
+	RCC->APB2ENR &= ~(RCC_APB2ENR_TIM8EN);
+	RCC->APB2ENR &= ~(RCC_APB2ENR_TIM1EN);
+
+	// Disable USART1
+	RCC->APB2ENR &= ~(RCC_APB2ENR_USART1EN);
+
+	// Disable SPI1
+	RCC->APB2ENR &= ~(RCC_APB2ENR_SPI1EN);
+
+	// Disable SD MMC
+	RCC->APB2ENR &= ~(RCC_APB2ENR_SDMMC1EN);
+
+	// Disable Firewall
+	RCC->APB2ENR &= ~(RCC_APB2ENR_FWEN);
+
+	// Disable SYSCFG
+	RCC->APB2ENR &= ~(RCC_APB2ENR_SYSCFGEN);
+
+	//Everything works
+
+	// AHB1SMENR (DMA, Flash, CRC, TSC)
+	RCC->AHB1SMENR &= ~(RCC_AHB1SMENR_DMA1SMEN);
+	RCC->AHB1SMENR &= ~(RCC_AHB1SMENR_DMA2SMEN);
+	RCC->AHB1SMENR &= ~(RCC_AHB1SMENR_FLASHSMEN);
+	RCC->AHB1SMENR &= ~(RCC_AHB1SMENR_CRCSMEN);
+	RCC->AHB1SMENR &= ~(RCC_AHB1SMENR_TSCSMEN);
+
+	// AHB2SMENR (GPIO Ports, ADC, RNG)
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_GPIOASMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_GPIOBSMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_GPIOCSMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_GPIOFSMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_GPIOGSMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_GPIOHSMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_ADCSMEN);
+	RCC->AHB2SMENR &= ~(RCC_AHB2SMENR_RNGSMEN);
+
+	// AHB3SMENR (QSPI, FMC)
+	RCC->AHB3SMENR &= ~(RCC_AHB3SMENR_QSPISMEN);
+	RCC->AHB3SMENR &= ~(RCC_AHB3SMENR_FMCSMEN);
+
+	// APB1SMENR1 (OPAMP, DAC, CAN, I2C, UART, SPI, Timers)
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_OPAMPSMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_DAC1SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_CAN1SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_WWDGSMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_I2C3SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_I2C1SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_UART5SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_UART4SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_USART3SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_USART2SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_SPI2SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_TIM7SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_TIM6SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_TIM5SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_TIM4SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_TIM3SMEN);
+	RCC->APB1SMENR1 &= ~(RCC_APB1SMENR1_TIM2SMEN);
+
+	// APB1SMENR2
+	RCC->APB1SMENR2 &= ~(RCC_APB1SMENR2_LPTIM2SMEN);
+	RCC->APB1SMENR2 &= ~(RCC_APB1SMENR2_SWPMI1SMEN);
+	RCC->APB1SMENR2 &= ~(RCC_APB1SMENR2_LPUART1SMEN);
+
+	// APB2SMENR
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_DFSDM1SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_SAI2SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_SAI1SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_TIM17SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_TIM16SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_TIM15SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_TIM8SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_TIM1SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_USART1SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_SPI1SMEN);
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_SDMMC1SMEN);
+
+	RCC->APB2SMENR &= ~(RCC_APB2SMENR_SYSCFGSMEN);
+
 }
-
-void enter_stop2_mode(void) {
-    // 1. Configure LPTIM1 as wakeup source on EXTI line 32
-    EXTI->IMR2 |= EXTI_IMR2_IM32;  // Enable LPTIM1 interrupt on EXTI line 32
-
-    // 2. Clear STOPWUCK bit to select MSI oscillator when waking from Stop mode
-    RCC->CFGR &= ~RCC_CFGR_STOPWUCK;
-
-    // 3. Set SLEEPDEEP bit
-    SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
-
-    // 4. Configure LPMS bits for Stop 2 mode
-    PWR->CR1 &= ~PWR_CR1_LPMS;  // Clear LPMS bits
-    PWR->CR1 |= PWR_CR1_LPMS_STOP2;  // Set LPMS to "010" for STOP2
-
-    // 5. Clear any pending EXTI interrupts
-//    EXTI->PR1 = 0xFFFFFFFF;
-//    EXTI->PR2 = 0xFFFFFFFF;  // Clear pending interrupts in PR2 as well
-
-    // 6. Suspend HAL Tick
-    HAL_SuspendTick();
-
-    // 7. Enter Stop 2 mode
-    __WFI();
-
-    // 8. After wakeup
-    HAL_ResumeTick();
-
-    // 9. Reset SLEEPDEEP bit
-    SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-}
-
 
 void disable_unused_peripherals_register(void) {
-    // Disable GPIO ports clock enable registers
-//    RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOBEN |
-//                      RCC_AHB2ENR_GPIOCEN |
-//                      RCC_AHB2ENR_GPIODEN |
-//                      RCC_AHB2ENR_GPIOEEN);
+
+    RCC->AHB1ENR &= ~(
+        RCC_AHB1ENR_DMA1EN |    // DMA1
+        RCC_AHB1ENR_DMA2EN |    // DMA2
+        RCC_AHB1ENR_CRCEN |     // CRC
+        RCC_AHB1ENR_TSCEN       // Touch sensing controller
+    );
+
+    // Disable AHB2 Peripherals
+	RCC->AHB2ENR &= ~(
+		RCC_AHB2ENR_GPIOBEN |   // GPIO Port B
+		RCC_AHB2ENR_GPIOCEN |   // GPIO Port C
+		RCC_AHB2ENR_GPIOFEN |   // GPIO Port F
+		RCC_AHB2ENR_GPIOGEN |   // GPIO Port G
+		RCC_AHB2ENR_GPIOHEN |   // GPIO Port H
+		RCC_AHB2ENR_ADCEN |     // ADC
+		RCC_AHB2ENR_RNGEN     // Random Number Generator
+	);
+
+	// Disable GPIOB clock
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOBEN);
+
+	// Disable GPIOC clock
+	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOCEN);
+//
+//	// Disable GPIOD clock
+//	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIODEN);
+
+//	// Disable GPIOE clock
+//	RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOEEN);
 
     // Disable USART clocks
     RCC->APB2ENR &= ~(RCC_APB2ENR_USART1EN);
@@ -410,50 +574,6 @@ void disable_unused_peripherals_register(void) {
     // Disable USB clock
     RCC->APB1ENR1 &= ~(1 << 26);
 
-    // Disable AES
-    //RCC->AHB2ENR &= ~(RCC_AHB2ENR_AESEN);
-}
-
-void SystemClock_LowPower_Config(void)
-{
-    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-    /** Configure the main internal regulator output voltage
-    */
-    if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
-    {
-      Error_Handler();
-    }
-    /** Initializes the RCC Oscillators according to the specified parameters
-    * in the RCC_OscInitTypeDef structure.
-    */
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
-    RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-    RCC_OscInitStruct.MSICalibrationValue = 0;
-    RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_0;  // 100 kHz
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-    {
-        Error_Handler();
-    }
-
-    /** Initializes the CPU, AHB and APB buses clocks
-    */
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-    |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-    {
-        Error_Handler();
-    }
-
-    // Print current system clock frequency
-    printf("(LOST) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
 }
 
 void SystemClock_FullSpeed_Config(void)
@@ -494,9 +614,6 @@ void SystemClock_FullSpeed_Config(void)
     {
         Error_Handler();
     }
-
-    // Print current system clock frequency
-    printf("(FULL SPEED) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
 }
 
 /**

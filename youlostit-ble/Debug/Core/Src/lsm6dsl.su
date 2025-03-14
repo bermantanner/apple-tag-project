@@ -1,2 +1,4 @@
-../Core/Src/lsm6dsl.c:22:6:lsm6dsl_init	16	static
-../Core/Src/lsm6dsl.c:43:6:lsm6dsl_read_xyz	32	static
+../Core/Src/lsm6dsl.c:30:6:lsm6dsl_init_movement_detection	16	static
+../Core/Src/lsm6dsl.c:49:9:lsm6dsl_check_movement	16	static
+../Core/Src/lsm6dsl.c:68:6:lsm6dsl_init	16	static
+../Core/Src/lsm6dsl.c:97:6:lsm6dsl_read_xyz	32	static

@@ -1,7 +1,4 @@
 ../Drivers/CMSIS/Include/core_cm4.h:1679:22:__NVIC_EnableIRQ	16	static,ignoring_inline_asm
 ../Drivers/CMSIS/Include/core_cm4.h:1809:22:__NVIC_SetPriority	16	static
-../Core/Src/timer.c:14:6:timer_init	16	static
-../Core/Src/timer.c:44:6:timer_reset	16	static
-../Core/Src/timer.c:51:6:timer_set_ms	16	static
-../Core/Src/timer.c:70:6:lptim_init	8	static
-../Core/Src/timer.c:154:6:set_low_timer_ms	4	static
+../Core/Src/timer.c:10:6:lptim_init	8	static
+../Core/Src/timer.c:94:6:set_low_timer_ms	4	static
