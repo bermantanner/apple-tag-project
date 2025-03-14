@@ -148,10 +148,10 @@ void privtag_run() {
 //	PWR->CR1 &= ~0b11000000000;
 //	PWR->CR1 |=  0b10000000000;
 
-	while ((PWR->SR2 & PWR_SR2_VOSF) != 0)
-	{
-	    // Wait???
-	}
+//	while ((PWR->SR2 & PWR_SR2_VOSF) != 0)
+//	{
+//	    // Wait???
+//	}
 
 
 	// Initialize timer to be in 50 ms intervals
@@ -214,6 +214,7 @@ void privtag_run() {
 //        __enable_irq();
 //        //HAL_ResumeTick();
 
+
 		if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
 			SystemClock_FullSpeed_Config();
 
@@ -265,6 +266,7 @@ void privtag_run() {
 
 				    SystemClock_LowPower_Config();
 				}
+
 			}
 			else {
 			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) { // If the device has been there for long as the threshold, and it is not currently lost, turn on lost mode
@@ -281,6 +283,7 @@ void privtag_run() {
 			        }
 			    }
 			}
+
 
 			if (is_lost) { //LOST MODE!
 				// Calculates the total minutes lost
@@ -320,6 +323,7 @@ void privtag_run() {
 //        __WFI();  // Immediately wait for interrupt
 //        //__enable_irq();
 //        HAL_ResumeTick();
+		// At the end of your main loop, before STOP2 mode
 
 		HAL_SuspendTick();
 		HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
