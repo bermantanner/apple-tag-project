@@ -50,7 +50,7 @@ static void MX_SPI3_Init(void);
 void privtag_run();
 
 #define MOVEMENT_THRESHOLD 4000     	// Max movement until movement triggered
-#define LOST_TIME_THRESHOLD 12000  		// 60 seconds in milliseconds
+#define LOST_TIME_THRESHOLD 60000  		// 60 seconds in milliseconds
 
 // Global Variables for states
 volatile uint8_t timer_flag = 0;	 	// timer flag which is set by interrupt handler, read/cleared by main loop
@@ -256,6 +256,7 @@ int main(void)
   					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
   					send_message = 0;
 
+  					standbyBle();
   					//SystemClock_LowPower_Config();
   				}
   			}
@@ -278,7 +279,7 @@ void LPTIM1_IRQHandler(void)
         timer_flag = 1;
 
         // Increment time_still (now 1000 ms per interrupt instead of 50 ms)
-        time_still += 1000;
+        time_still += 2000;
 
         // Check for 10-second interval
         if ((time_still % 10000) == 0) {
