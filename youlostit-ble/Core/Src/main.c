@@ -95,8 +95,6 @@ int main(void)
   // Initialize the ble configurations
   ble_init();
 
-  leds_set(0b11);
-
   privtag_run();				   // Call the privtag_run function to start the "application"
   	for(;;);					   // Infinite loop so the program keeps running (the priv_tag should run forever though since there is a infinite while loop in there)
 
@@ -136,9 +134,12 @@ void LPTIM1_IRQHandler(void)
 
 void privtag_run() {
 	//Initialize peripherals
+	PWR->CR1 |= PWR_CR1_LPR;
+
 	i2c_init();
 	lsm6dsl_init();
-	leds_init();
+	//leds_init();
+
 
 //
 //	FLASH->ACR &= ~0b111;
@@ -186,6 +187,9 @@ void privtag_run() {
 
 
 	SystemClock_FullSpeed_Config();
+	// Switch to high-speed MSI (8MHz)
+	//RCC->CR = (RCC->CR & ~RCC_CR_MSIRANGE_Msk) | (RCC_CR_MSIRANGE_8 << RCC_CR_MSIRANGE_Pos) | RCC_CR_MSIRGSEL;
+
 
 	disconnectBLE();
 	setDiscoverability(0);
@@ -193,10 +197,22 @@ void privtag_run() {
 
 	SystemClock_LowPower_Config();
 
+	// Switch to low-power MSI (100kHz)
+	//RCC->CR = (RCC->CR & ~RCC_CR_MSIRANGE_Msk) | (RCC_CR_MSIRANGE_0 << RCC_CR_MSIRANGE_Pos) | RCC_CR_MSIRGSEL;
+
+	disable_unused_peripherals_register();
+
 	// Hard coded name for the device
 	unsigned char device_name[] = "TaneTag";
 
 	while (1) {
+
+//        SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;  // Ensure standard sleep mode
+//        __disable_irq();
+//        //HAL_SuspendTick();
+//        __WFI();  // Immediately wait for interrupt
+//        __enable_irq();
+//        //HAL_ResumeTick();
 
 		if(!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
 			SystemClock_FullSpeed_Config();
@@ -233,7 +249,7 @@ void privtag_run() {
 
 			//If device DID move.
 			if (device_moved_flag) {
-				leds_set(0b11);
+				//leds_set(0b11);
 				is_lost = 0;										 // If device moved, turn is lost mode to be OFF
 				time_still = 0;										 // If device moved, reset the time that it was still to be 0
 				minutes_since_lost = 0;								 // If device moved, reset the minutes since lost to be 0
@@ -244,6 +260,7 @@ void privtag_run() {
 
 					disconnectBLE();
 				    setDiscoverability(0);
+
 				    nonDiscoverable = 1;
 
 				    SystemClock_LowPower_Config();
@@ -252,7 +269,7 @@ void privtag_run() {
 			else {
 			    if (time_still >= LOST_TIME_THRESHOLD && !is_lost) { // If the device has been there for long as the threshold, and it is not currently lost, turn on lost mode
 			        is_lost = 1;
-			        leds_set(0b00);
+			        // leds_set(0b00);
 			        //If the device is in non discoverable mode, then we set the discoverability to be true, and set the nonDiscoverable flag to be false
 			        if (nonDiscoverable) {
 			        	SystemClock_FullSpeed_Config();
@@ -277,7 +294,7 @@ void privtag_run() {
 
 					SystemClock_FullSpeed_Config();
 
-					leds_set(0b01);
+					//leds_set(0b01);
 
 					//Build the string to send out
 					unsigned char formatted_str[32];
@@ -290,31 +307,108 @@ void privtag_run() {
 					updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, str_len, formatted_str);
 					send_message = 0;
 
-					leds_set(0b10);
+					//leds_set(0b10);
 
 					SystemClock_LowPower_Config();
 				}
-				//Debugging print statements
-				printf("(LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
-				printf("(LOST) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
-			}
-			else {
-				//Debugging print statements
-				printf("(NOT LOST) Time still: %d, minutes lost: %d\n", time_still, minutes_since_lost);
-				printf("(NOT LOST) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
 			}
 		}
 
-		SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+//        SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;  // Ensure standard sleep mode
+//        //__disable_irq();
+//        HAL_SuspendTick();
+//        __WFI();  // Immediately wait for interrupt
+//        //__enable_irq();
+//        HAL_ResumeTick();
 
-		//clearing pending interrupts
-		__disable_irq();
-
-		__asm volatile ("wfi");
-		__enable_irq();
+		HAL_SuspendTick();
+		HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
+		HAL_ResumeTick();
+		//enter_stop2_mode();
+//
+//		if (!timer_flag && !HAL_GPIO_ReadPin(BLE_INT_GPIO_Port, BLE_INT_Pin)) {
+//		        enter_stop2_mode();
+//		}
 	}
 }
 
+void enter_stop2_mode(void) {
+    // 1. Configure LPTIM1 as wakeup source on EXTI line 32
+    EXTI->IMR2 |= EXTI_IMR2_IM32;  // Enable LPTIM1 interrupt on EXTI line 32
+
+    // 2. Clear STOPWUCK bit to select MSI oscillator when waking from Stop mode
+    RCC->CFGR &= ~RCC_CFGR_STOPWUCK;
+
+    // 3. Set SLEEPDEEP bit
+    SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+
+    // 4. Configure LPMS bits for Stop 2 mode
+    PWR->CR1 &= ~PWR_CR1_LPMS;  // Clear LPMS bits
+    PWR->CR1 |= PWR_CR1_LPMS_STOP2;  // Set LPMS to "010" for STOP2
+
+    // 5. Clear any pending EXTI interrupts
+//    EXTI->PR1 = 0xFFFFFFFF;
+//    EXTI->PR2 = 0xFFFFFFFF;  // Clear pending interrupts in PR2 as well
+
+    // 6. Suspend HAL Tick
+    HAL_SuspendTick();
+
+    // 7. Enter Stop 2 mode
+    __WFI();
+
+    // 8. After wakeup
+    HAL_ResumeTick();
+
+    // 9. Reset SLEEPDEEP bit
+    SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+}
+
+
+void disable_unused_peripherals_register(void) {
+    // Disable GPIO ports clock enable registers
+//    RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOBEN |
+//                      RCC_AHB2ENR_GPIOCEN |
+//                      RCC_AHB2ENR_GPIODEN |
+//                      RCC_AHB2ENR_GPIOEEN);
+
+    // Disable USART clocks
+    RCC->APB2ENR &= ~(RCC_APB2ENR_USART1EN);
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_USART2EN |
+                       RCC_APB1ENR1_USART3EN);
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_UART4EN |
+                       RCC_APB1ENR1_UART5EN);
+
+    // Disable I2C clocks
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_I2C1EN |
+                       RCC_APB1ENR1_I2C3EN);
+
+    // Disable SPI clocks
+    RCC->APB2ENR &= ~(RCC_APB2ENR_SPI1EN);
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_SPI2EN);
+
+    // Disable ADC clock
+    RCC->AHB2ENR &= ~(RCC_AHB2ENR_ADCEN);
+
+    // Disable DAC clock
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_DAC1EN);
+
+    // Disable Timer clocks
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_TIM2EN |
+                       RCC_APB1ENR1_TIM3EN |
+                       RCC_APB1ENR1_TIM4EN |
+                       RCC_APB1ENR1_TIM5EN |
+                       RCC_APB1ENR1_TIM6EN |
+                       RCC_APB1ENR1_TIM7EN);
+
+    // Disable CAN clock
+    RCC->APB1ENR1 &= ~(RCC_APB1ENR1_CAN1EN);
+
+    // Disable USB clock
+    RCC->APB1ENR1 &= ~(1 << 26);
+
+    // Disable AES
+    //RCC->AHB2ENR &= ~(RCC_AHB2ENR_AESEN);
+}
 
 void SystemClock_LowPower_Config(void)
 {
@@ -399,53 +493,6 @@ void SystemClock_FullSpeed_Config(void)
 
     // Print current system clock frequency
     printf("(FULL SPEED) current system clock is %lu Hz\n", HAL_RCC_GetSysClockFreq());
-}
-
-
-/**
-  * @brief System Clock Configuration
-  * @attention This changes the System clock frequency, make sure you reflect that change in your timer
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-  /** Configure the main internal regulator output voltage
-  */
-  if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
-  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-  RCC_OscInitStruct.MSICalibrationValue = 0;
-  // This lines changes system clock frequency
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_0;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-  {
-    Error_Handler();
-  }
 }
 
 /**
